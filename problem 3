@@ -1,0 +1,282 @@
+import scipy
+import numpy as np
+import matplotlib.pyplot as plt
+def hessian_modification(h):
+    beta = 10**(-3)
+    n = h.shape[0]
+    t = 0
+
+    if np.diagonal(h).min() > 0:
+        t = 0
+    else:
+        t = -h.min() + beta
+
+    not_positive_definite = True
+    
+    while not_positive_definite:
+        try:
+            h = h + t*np.identity(n)
+            L = scipy.linalg.cholesky(h)
+            not_positive_definite = False
+        except :
+            t = np.maximum(2*t,beta)
+            print('catch')
+    
+
+    return L.T@L
+
+def f(x):
+    return 0
+
+def gradient(f,x):
+    return 0
+
+def hessian(f,x):
+    return 0
+
+def step_length(f,x,p):
+    alpha = 1
+    rho = 0.8
+    c_1 = 0.6
+    while(f(x + alpha*p) > (f(x) + c_1*alpha*np.dot(gradient(f,x),p))):
+        alpha = rho*alpha
+    return alpha
+
+
+
+def hw3_p1(f,x_0,k):
+    iteration = 0
+    x = x_0
+    while iteration < k:
+        H = hessian(f,x)
+        H_new = hessian_modification(H)
+   
+        g = gradient(f,x)
+        p = scipy.sparse.linalg.spsolve(H_new,-g)
+        alpha = step_length(f,x,p)
+        x = x + alpha*p
+        iteration = iteration + 1
+    return x,f(x)
+
+# The code from HW 2
+
+from sympy import *
+
+# define the Gradient and Hessian matrix for Fenton function
+x, y = symbols('x y')
+f = symbols('f', cls=Function)
+f = (1/2)*(12+x**2+((1+y**2)/x**2)+(((x*y)**2 + 100)/(x*y)**4))
+
+G = Matrix([f]).jacobian(Matrix(list(f.free_symbols)))
+H = hessian(f, [x, y])
+
+def fenton(f,X):
+    x_1 = X[0]
+    x_2 = X[1]
+    f_x = f.subs([(x,x_1), (y,x_2)])
+    g = G.subs(x,x_1).subs(y,x_2)
+    h = H.subs(x,x_1).subs(y,x_2)
+
+    return f_x,np.array(g).astype(np.float64),np.array(h).astype(np.float64)
+
+def hw2_p3(x_0,k):
+    X = x_0
+    n = 0
+    y_list = np.zeros(k)
+    while(n < k):
+        f_x,g,h = fenton(f,X)
+        y_list[n] = f_x
+        X = X + np.linalg.lstsq((-1)*h,g.T)[0].flatten('F')
+        n = n + 1
+    return X,y_list
+
+
+# Code for this question
+
+def step_length_p3(f,f_x,g,X,p):
+    alpha = 1
+    rho = 0.8
+    c_1 = 0.6
+
+    x_new = X + alpha*p
+    x_1 = x_new[0]
+    x_2 = x_new[1]
+    f_x_new = f.subs([(x,x_1), (y,x_2)])
+    while(f_x_new > (f_x + c_1*alpha*np.dot(g,p))):
+        alpha = rho*alpha
+        x_new = X + alpha*p
+        x_1 = x_new[0]
+        x_2 = x_new[1]
+        f_x_new = f.subs([(x,x_1), (y,x_2)])
+    return alpha
+
+def hw3_p3_b(x_0,k):
+    X = x_0
+    n = 0
+    y_list = np.zeros(k)
+    while(n < k):
+        f_x,g,h = fenton(f,X)
+        y_list[n] = f_x
+        h_new = hessian_modification(h)
+        h_new = scipy.sparse.csr_matrix(h_new)
+        p = scipy.sparse.linalg.spsolve((-1)*h_new,g.T).flatten('F')
+        alpha = step_length_p3(f,f_x,g,X,p)
+        X = X + alpha*p
+        n = n + 1
+    
+    return X,y_list
+
+start_1 = np.array([3,2])
+start_2 = np.array([3,4])
+X_1a,y_list_1a = hw2_p3(start_1,20)
+X_1b,y_list_1b = hw3_p3_b(start_1,20)
+X_2a,y_list_2a = hw2_p3(start_2,20)
+X_2b,y_list_2b = hw3_p3_b(start_2,20)
+
+
+x_list = np.arange(20)
+
+plt.plot(x_list,y_list_1a,label='HW2 start at (3,2)')
+plt.plot(x_list,y_list_1b,label='HW3 start at (3,2)')
+# plt.plot(x_list,y_list_2a,label='HW2 start at (3,4)')
+plt.plot(x_list,y_list_2b,label='HW3 start at (3,4)')
+plt.xlabel('iterations')
+plt.ylabel('f(x)')
+plt.legend()
+
+
+# define Hessian matrix for Rosenbrock, see question I
+def Hessian(x):
+    n = int(len(x))
+    H = np.zeros((n,n))
+
+    H[0,0] = 1200*(x[0]**2)-400*x[1]+2
+    H[0,1] = -400*(x[0])
+
+    for i in range(1,n-1):
+
+        H[i,i-1] = -400*x[i-1]
+        H[i,i] = 1200*(x[i]**2)-400*x[i+1]+202
+        H[i,i+1] = -400*x[i]
+    
+    H[n-1,n-2] = -400*x[n-2]
+    H[n-1,n-1] = 200
+
+    return H
+
+
+# define Gradient for Rosenbrock
+
+def Gradient_Rosenbrock(x):
+    n = int(len(x))
+    G = np.zeros(n)
+    G[0] = 400*(x[0]**3)-400*x[0]*x[1]+2*x[0]-2
+    for i in range(1,n-1):
+        G[i] = 200*x[i] - 200*(x[i-1]**2) + 400*(x[i]**3) - 400*x[i]*x[i+1] + 2*x[i] - 2
+
+    G[n-1] = 200*(x[n-1] - (x[n-2]**2))
+
+    return G
+
+# define function value of Rosenbrock
+
+def f_Rosenbrock(x):
+    f = 0
+    n = int(len(x))
+
+    for i in range(n-1):
+        f = f + 100*(x[i+1] - (x[0]**2))**2 + (x[i] - 1)**2
+    
+
+    return f
+
+
+# combine above parameters
+
+def Rosenbrock(x):
+    return f_Rosenbrock(x),Gradient_Rosenbrock(x),Hessian(x)
+
+
+
+
+
+# Code for this question
+
+def step_length_Rosenbrock(f_x,g,X,p):
+    alpha = 1
+    rho = 0.8
+    c_1 = 0.5
+    x_new = X + alpha*p
+    
+    f_x_new = f_Rosenbrock(x_new)
+    
+    special_count = 1
+    
+    while(f_x_new > (f_x + c_1*alpha*np.dot(g,p))):
+        alpha = rho*alpha
+        x_new = X + alpha*p
+        f_x_new = f_Rosenbrock(x_new)
+        special_count = special_count + 1
+
+        if(special_count == 6):
+            alpha = 1
+            return alpha,special_count
+    return alpha,special_count
+
+def hw4_nmhm(x_in,niter,eps):
+    X = x_in
+    n = 0
+    g = Gradient_Rosenbrock(X)
+
+    threshold = np.linalg.norm(g)/100
+
+
+    number_solve = 0
+    number_evaluate = 0
+
+
+    while(n < niter and np.linalg.norm(g) > np.minimum(eps,threshold)):
+        f_x,g,h = Rosenbrock(X)
+        h_new = hessian_modification(h)
+        h_new = scipy.sparse.csr_matrix(h_new)
+        p = scipy.sparse.linalg.spsolve((-1)*h_new,g.T).flatten('F')
+        alpha,counts = step_length_Rosenbrock(f_x,g,X,p)
+        X = X + alpha*p
+        n = n + 1
+
+        number_solve = number_solve + 1
+        number_evaluate = number_evaluate + counts
+    
+    return X,number_solve,number_evaluate
+
+
+
+# compute time cost for start point at (5,...,5) and (10,...,10)
+
+time_list_5 = np.zeros(90)
+time_list_10 = np.zeros(90)
+niter = 100
+eps = 10**(-5)
+for i in range(10,100):
+    x = 5*np.ones(i)
+    start_time=timeit.default_timer()
+    hw4_nmhm(x,niter,eps)
+    stop_time=timeit.default_timer()
+    time_list_5[i-10] = stop_time - start_time
+
+
+for i in range(10,100):
+    x = 10*np.ones(i)
+    start_time=timeit.default_timer()
+    hw4_nmhm(x,niter,eps)
+    stop_time=timeit.default_timer()
+    time_list_10[i-10] = stop_time - start_time
+
+iteration_list = np.arange(10,100)
+
+plt.plot(iteration_list,time_list_5,label='(5,...,5)')
+plt.plot(iteration_list,time_list_10,label='(10,...,10)')
+plt.xlabel('size n') 
+plt.ylabel('time cost')
+plt.legend() 
+

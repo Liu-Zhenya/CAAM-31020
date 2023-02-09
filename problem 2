@@ -1,0 +1,66 @@
+import scipy
+import numpy as np
+import matplotlib.pyplot as plt
+import timeit
+
+# define Hessian matrix
+def Hessian(x):
+    n = int(len(x))
+    H = np.zeros((n,n))
+
+    H[0,0] = 1200*(x[0]**2)-400*x[1]+2
+    H[0,1] = -400*(x[0])
+
+    for i in range(1,n-1):
+
+        H[i,i-1] = -400*x[i-1]
+        H[i,i] = 1200*(x[i]**2)-400*x[i+1]+202
+        H[i,i+1] = -400*x[i]
+    
+    H[n-1,n-2] = -400*x[n-2]
+    H[n-1,n-1] = 200
+
+    return H
+    
+        
+# generate csr sparse matrix
+def sparse_Hessian(H):
+    S = scipy.sparse.csr_matrix(H)
+    return S
+
+
+
+#
+def time_Sparse(n):
+    b = np.ones(n)
+    x_0 = 2*np.ones(n)
+    sparse_H = sparse_Hessian(Hessian(x_0))
+    start_time=timeit.default_timer()
+    scipy.sparse.linalg.spsolve(sparse_H,b)
+    stop_time=timeit.default_timer()
+
+    return stop_time-start_time
+
+
+def time_dense(n):
+    b = np.ones(n)
+    x_0 = 2*np.ones(n)
+    H = Hessian(x_0)
+    start_time=timeit.default_timer()
+    np.linalg.solve(H,b)
+    stop_time=timeit.default_timer()
+
+    return stop_time-start_time
+
+size = np.arange(200,1000)
+a_n = np.zeros(800)
+b_n = np.zeros(800)
+
+for i in size:
+    a_n[i-200] = time_Sparse(i)
+    b_n[i-200] = time_dense(i)
+
+
+plt.loglog(size,a_n,label='a_n')
+plt.loglog(size,b_n,label='b_n')
+plt.legend()

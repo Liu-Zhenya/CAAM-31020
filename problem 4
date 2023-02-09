@@ -1,0 +1,652 @@
+import scipy
+import numpy as np
+import matplotlib.pyplot as plt
+
+# This is a general model with one specific function f
+
+def f(x):
+    return 0
+
+def gradient(x):
+    return 0
+
+def hessian(x):
+    return 0
+
+def parameters(x):
+    f_x = 0
+    g = 0
+    h = 0
+    return f_x,g,h
+
+# Define quadratic model m_k
+def m_k(x,p):
+    f_x,g,h = parameters(x)
+
+    m = f_x + np.dot(g,p) + 0.5*(p.T @ h @ p)
+
+    return m
+
+def dogleg(x,delta):
+
+    f_x,g,h = parameters(x)
+
+    h_sparse = scipy.sparse.csr_matrix(h)
+
+    p_B = scipy.sparse.linalg.spsolve(-h,g)
+
+    p_U = (-1*(g.T @ g))/(g.T @ h @ g)
+
+    p_dif = p_B - p_U
+
+    p_B_norm = np.linalg.norm(p_B)
+    p_U_norm = np.linalg.norm(p_U)
+    p_dif_norm = np.linalg.norm(p_dif)
+
+
+    # Decide tao value
+    tao = 0
+
+    if p_B_norm <= delta:
+        tao = 2
+
+    elif p_U_norm >= delta:
+        tao = delta/p_U_norm
+    else:
+        f = (p_U.T @ p_dif)*(p_U.T @ p_dif)
+        tao_sub = -2*(p_U.T @ p_dif) + 2*(np.math.sqrt(f - p_dif_norm*p_dif_norm*(p_U_norm**2 - delta**2)))
+        tao = tao_sub/(2*p_dif_norm*p_dif_norm) + 1
+    
+    # Decide p
+
+    if tao <= 1:
+        p = tao*p_U
+    elif 1 < tao <=2:
+        p = p_U + (tao-1)*p_dif
+
+    return p
+        
+    
+# main trusted region method
+
+def Trust_Region(x,niter,eps):
+    k = 0
+    number_solve_equation = 0
+    number_evaluation = 0
+
+    y_list = np.zeros(100)
+
+    delta_max = 0.5
+    delta = delta_max
+
+    g = gradient(x)
+    number_evaluation = number_evaluation + 1
+
+
+    
+    while(k < niter and np.linalg.norm(g) > eps):
+        p = dogleg(x,delta)
+
+        number_evaluation = number_evaluation + 3
+        number_solve_equation = number_solve_equation + 1
+
+        x_new = x + p
+
+        f_x = f(x)
+        y_list[k] = f_x
+
+        f_x_new = f(x_new)
+        number_evaluation = number_evaluation + 2
+
+        rho = (f_x - f_x_new)/(m_k(x,np.zeros(len(p))) - m_k(x,p))
+        number_evaluation = number_evaluation + 2
+
+        if rho < 0.25:
+            delta = delta/4
+        elif rho > 0.75 and np.linalg.norm(p) == delta:
+            delta = np.min((2*delta),delta_max)
+
+        if rho > 0.25:
+            x = x_new
+            k = k + 1
+    
+    return x,number_solve_equation,number_evaluation,y_list
+
+        
+
+        
+# define Hessian matrix for Rosenbrock, see question I
+def Hessian(x):
+    n = int(len(x))
+    H = np.zeros((n,n))
+
+    H[0,0] = 1200*(x[0]**2)-400*x[1]+2
+    H[0,1] = -400*(x[0])
+
+    for i in range(1,n-1):
+
+        H[i,i-1] = -400*x[i-1]
+        H[i,i] = 1200*(x[i]**2)-400*x[i+1]+202
+        H[i,i+1] = -400*x[i]
+    
+    H[n-1,n-2] = -400*x[n-2]
+    H[n-1,n-1] = 200
+
+    return H
+
+
+# define Gradient for Rosenbrock
+
+def Gradient_Rosenbrock(x):
+    n = int(len(x))
+    G = np.zeros(n)
+    G[0] = 400*(x[0]**3)-400*x[0]*x[1]+2*x[0]-2
+    for i in range(1,n-1):
+        G[i] = 200*x[i] - 200*(x[i-1]**2) + 400*(x[i]**3) - 400*x[i]*x[i+1] + 2*x[i] - 2
+
+    G[n-1] = 200*(x[n-1] - (x[n-2]**2))
+
+    return G
+
+# define function value of Rosenbrock
+
+def f_value(x):
+    f = 0
+    n = int(len(x))
+
+    for i in range(n-1):
+        f = f + 100*(x[i+1] - (x[0]**2))**2 + (x[i] - 1)**2
+    
+
+    return f
+
+
+# combine above parameters
+
+def parameter(x):
+    return f_value(x),Gradient_Rosenbrock(x),Hessian(x)
+
+
+# Define quadratic model m_k
+def m_k(x,p):
+    f_x,g,h = parameter(x)
+
+    m = f_x + np.dot(g,p) + 0.5*np.dot(np.dot(p.T,h),p)
+
+    return m
+
+def dogleg(x,delta):
+
+    f_x,g,h = parameter(x)
+
+    h_sparse = scipy.sparse.csr_matrix(h)
+
+    p_B = scipy.sparse.linalg.spsolve(-h_sparse,g)
+
+    p_U = ((-1*(np.dot(g.T,g)))/(np.dot(g.T,h).dot(g)))*g
+
+    p_dif = p_B - p_U
+
+    p_B_norm = np.linalg.norm(p_B)
+    p_U_norm = np.linalg.norm(p_U)
+    p_dif_norm = np.linalg.norm(p_dif)
+
+
+    # Decide tao value
+    tao = 0
+
+    if p_B_norm <= delta:
+        tao = 2
+
+    elif p_U_norm >= delta:
+        tao = delta/p_U_norm
+    else:
+        f = (np.dot(p_U.T,p_dif))*(np.dot(p_U.T,p_dif))
+        tao_sub = -2*(np.dot(p_U.T,p_dif)) + 2*(np.math.sqrt(f - p_dif_norm*p_dif_norm*(p_U_norm**2 - delta**2)))
+        tao = tao_sub/(2*p_dif_norm*p_dif_norm) + 1
+    
+    # Decide p
+
+    if tao <= 1:
+        p = tao*p_U
+    elif 1 < tao <=2:
+        p = p_U + (tao-1)*p_dif
+
+    return p
+        
+    
+# main trusted region method for Rosenbrock function
+
+def hw4_tr_ls(x,niter,eps):
+    k = 0
+    number_solve_equation = 0
+    number_evaluation = 0
+
+    delta_max = 20
+    delta = delta_max
+
+    g = Gradient_Rosenbrock(x)
+    number_evaluation = number_evaluation + 1
+
+    threshold = np.linalg.norm(g)/100
+
+    
+    while(k < niter and np.linalg.norm(g) > np.minimum(eps,threshold)):
+        p = dogleg(x,delta)
+
+        number_evaluation = number_evaluation + 3
+        number_solve_equation = number_solve_equation + 1
+
+        x_new = x + p
+
+        f_x = f_value(x)
+
+        f_x_new = f_value(x_new)
+        number_evaluation = number_evaluation + 2
+
+        rho = (f_x - f_x_new)/(m_k(x,np.zeros(len(p))) - m_k(x,p))
+
+        number_evaluation = number_evaluation + 2
+
+        # we will meet the case 0/0, python defined as NaN
+        if np.isnan(rho):
+            break
+        
+        # special case if rho < o and f can never decrease along direction p
+        if rho < 0:
+
+            x = x_new
+            g = Gradient_Rosenbrock(x)
+            number_evaluation = number_evaluation + 1
+            k = k + 1
+            continue
+
+        if rho < 0.25:
+            delta = delta/4
+        elif rho > 0.75 and np.linalg.norm(p) == delta:
+        
+            delta = np.minimum(2*delta,delta_max)
+        else:
+            pass
+
+        if rho > 0.25:
+            x = x_new
+        
+        g = Gradient_Rosenbrock(x)
+        number_evaluation = number_evaluation + 1
+
+        k = k + 1
+    
+    return x,number_solve_equation,number_evaluation
+
+        
+# define Hessian matrix for Rosenbrock, see question I
+def Hessian(x):
+    n = int(len(x))
+    H = np.zeros((n,n))
+
+    H[0,0] = 1200*(x[0]**2)-400*x[1]+2
+    H[0,1] = -400*(x[0])
+
+    for i in range(1,n-1):
+
+        H[i,i-1] = -400*x[i-1]
+        H[i,i] = 1200*(x[i]**2)-400*x[i+1]+202
+        H[i,i+1] = -400*x[i]
+    
+    H[n-1,n-2] = -400*x[n-2]
+    H[n-1,n-1] = 200
+
+    return H
+
+
+# define Gradient for Rosenbrock
+
+def Gradient_Rosenbrock(x):
+    n = int(len(x))
+    G = np.zeros(n)
+    G[0] = 400*(x[0]**3)-400*x[0]*x[1]+2*x[0]-2
+    for i in range(1,n-1):
+        G[i] = 200*x[i] - 200*(x[i-1]**2) + 400*(x[i]**3) - 400*x[i]*x[i+1] + 2*x[i] - 2
+
+    G[n-1] = 200*(x[n-1] - (x[n-2]**2))
+
+    return G
+
+# define function value of Rosenbrock
+
+def f_value(x):
+    f = 0
+    n = int(len(x))
+
+    for i in range(n-1):
+        f = f + 100*(x[i+1] - (x[0]**2))**2 + (x[i] - 1)**2
+    
+
+    return f
+
+
+# combine above parameters
+
+def parameter(x):
+    return f_value(x),Gradient_Rosenbrock(x),Hessian(x)
+
+
+# Define quadratic model m_k
+def m_k(x,p):
+    f_x,g,h = parameter(x)
+
+    m = f_x + np.dot(g,p) + 0.5*np.dot(np.dot(p.T,h),p)
+
+    return m
+
+def dogleg(x,delta):
+
+    f_x,g,h = parameter(x)
+
+    h_sparse = scipy.sparse.csr_matrix(h)
+
+    p_B = scipy.sparse.linalg.spsolve(-h_sparse,g)
+
+    p_U = ((-1*(np.dot(g.T,g)))/(np.dot(g.T,h).dot(g)))*g
+
+    p_dif = p_B - p_U
+
+    p_B_norm = np.linalg.norm(p_B)
+    p_U_norm = np.linalg.norm(p_U)
+    p_dif_norm = np.linalg.norm(p_dif)
+
+
+    # Decide tao value
+    tao = 0
+
+    if p_B_norm <= delta:
+        tao = 2
+
+    elif p_U_norm >= delta:
+        tao = delta/p_U_norm
+    else:
+        f = (np.dot(p_U.T,p_dif))*(np.dot(p_U.T,p_dif))
+        tao_sub = -2*(np.dot(p_U.T,p_dif)) + 2*(np.math.sqrt(f - p_dif_norm*p_dif_norm*(p_U_norm**2 - delta**2)))
+        tao = tao_sub/(2*p_dif_norm*p_dif_norm) + 1
+    
+    # Decide p
+
+    if tao <= 1:
+        p = tao*p_U
+    elif 1 < tao <=2:
+        p = p_U + (tao-1)*p_dif
+
+    return p
+        
+    
+# main trusted region method for Rosenbrock function
+
+def hw4_tr_ls(x,niter,eps):
+    k = 0
+    number_solve_equation = 0
+    number_evaluation = 0
+
+    delta_max = 20
+    delta = delta_max
+
+    g = Gradient_Rosenbrock(x)
+    number_evaluation = number_evaluation + 1
+
+    threshold = np.linalg.norm(g)/100
+
+    
+    while(k < niter and np.linalg.norm(g) > np.minimum(eps,threshold)):
+        p = dogleg(x,delta)
+
+        number_evaluation = number_evaluation + 3
+        number_solve_equation = number_solve_equation + 1
+
+        x_new = x + p
+
+        f_x = f_value(x)
+
+        f_x_new = f_value(x_new)
+        number_evaluation = number_evaluation + 2
+
+        rho = (f_x - f_x_new)/(m_k(x,np.zeros(len(p))) - m_k(x,p))
+
+        number_evaluation = number_evaluation + 2
+
+        # we will meet the case 0/0, python defined as NaN
+        if np.isnan(rho):
+            break
+        
+        # special case if rho < o and f can never decrease along direction p
+        if rho < 0:
+
+            x = x_new
+            g = Gradient_Rosenbrock(x)
+            number_evaluation = number_evaluation + 1
+            k = k + 1
+            continue
+
+        if rho < 0.25:
+            delta = delta/4
+        elif rho > 0.75 and np.linalg.norm(p) == delta:
+        
+            delta = np.minimum(2*delta,delta_max)
+        else:
+            pass
+
+        if rho > 0.25:
+            x = x_new
+        
+        g = Gradient_Rosenbrock(x)
+        number_evaluation = number_evaluation + 1
+
+        k = k + 1
+    
+    return x,number_solve_equation,number_evaluation
+
+        
+# define Hessian matrix for Rosenbrock, see question I
+def Hessian(x):
+    n = int(len(x))
+    H = np.zeros((n,n))
+
+    H[0,0] = 1200*(x[0]**2)-400*x[1]+2
+    H[0,1] = -400*(x[0])
+
+    for i in range(1,n-1):
+
+        H[i,i-1] = -400*x[i-1]
+        H[i,i] = 1200*(x[i]**2)-400*x[i+1]+202
+        H[i,i+1] = -400*x[i]
+    
+    H[n-1,n-2] = -400*x[n-2]
+    H[n-1,n-1] = 200
+
+    return H
+
+
+# define Gradient for Rosenbrock
+
+def Gradient_Rosenbrock(x):
+    n = int(len(x))
+    G = np.zeros(n)
+    G[0] = 400*(x[0]**3)-400*x[0]*x[1]+2*x[0]-2
+    for i in range(1,n-1):
+        G[i] = 200*x[i] - 200*(x[i-1]**2) + 400*(x[i]**3) - 400*x[i]*x[i+1] + 2*x[i] - 2
+
+    G[n-1] = 200*(x[n-1] - (x[n-2]**2))
+
+    return G
+
+# define function value of Rosenbrock
+
+def f_value(x):
+    f = 0
+    n = int(len(x))
+
+    for i in range(n-1):
+        f = f + 100*(x[i+1] - (x[0]**2))**2 + (x[i] - 1)**2
+    
+
+    return f
+
+
+# combine above parameters
+
+def parameter(x):
+    return f_value(x),Gradient_Rosenbrock(x),Hessian(x)
+
+
+# Define quadratic model m_k
+def m_k(x,p):
+    f_x,g,h = parameter(x)
+
+    m = f_x + np.dot(g,p) + 0.5*np.dot(np.dot(p.T,h),p)
+
+    return m
+
+def dogleg(x,delta):
+
+    f_x,g,h = parameter(x)
+
+    h_sparse = scipy.sparse.csr_matrix(h)
+
+    p_B = scipy.sparse.linalg.spsolve(-h_sparse,g)
+
+    p_U = ((-1*(np.dot(g.T,g)))/(np.dot(g.T,h).dot(g)))*g
+
+    p_dif = p_B - p_U
+
+    p_B_norm = np.linalg.norm(p_B)
+    p_U_norm = np.linalg.norm(p_U)
+    p_dif_norm = np.linalg.norm(p_dif)
+
+
+    # Decide tao value
+    tao = 0
+
+    if p_B_norm <= delta:
+        tao = 2
+
+    elif p_U_norm >= delta:
+        tao = delta/p_U_norm
+    else:
+        f = (np.dot(p_U.T,p_dif))*(np.dot(p_U.T,p_dif))
+        tao_sub = -2*(np.dot(p_U.T,p_dif)) + 2*(np.math.sqrt(f - p_dif_norm*p_dif_norm*(p_U_norm**2 - delta**2)))
+        tao = tao_sub/(2*p_dif_norm*p_dif_norm) + 1
+    
+    # Decide p
+
+    if tao <= 1:
+        p = tao*p_U
+    elif 1 < tao <=2:
+        p = p_U + (tao-1)*p_dif
+
+    return p
+        
+    
+# main trusted region method for Rosenbrock function
+
+def hw4_tr_ls(x,niter,eps):
+    k = 0
+    number_solve_equation = 0
+    number_evaluation = 0
+
+    delta_max = 20
+    delta = delta_max
+
+    g = Gradient_Rosenbrock(x)
+    number_evaluation = number_evaluation + 1
+
+    threshold = np.linalg.norm(g)/100
+
+    
+    while(k < niter and np.linalg.norm(g) > np.minimum(eps,threshold)):
+        p = dogleg(x,delta)
+
+        number_evaluation = number_evaluation + 3
+        number_solve_equation = number_solve_equation + 1
+
+        x_new = x + p
+
+        f_x = f_value(x)
+
+        f_x_new = f_value(x_new)
+        number_evaluation = number_evaluation + 2
+
+        rho = (f_x - f_x_new)/(m_k(x,np.zeros(len(p))) - m_k(x,p))
+
+        number_evaluation = number_evaluation + 2
+
+        # we will meet the case 0/0, python defined as NaN
+        if np.isnan(rho):
+            break
+        
+        # special case if rho < o and f can never decrease along direction p
+        if rho < 0:
+
+            x = x_new
+            g = Gradient_Rosenbrock(x)
+            number_evaluation = number_evaluation + 1
+            k = k + 1
+            continue
+
+        if rho < 0.25:
+            delta = delta/4
+        elif rho > 0.75 and np.linalg.norm(p) == delta:
+        
+            delta = np.minimum(2*delta,delta_max)
+        else:
+            pass
+
+        if rho > 0.25:
+            x = x_new
+        
+        g = Gradient_Rosenbrock(x)
+        number_evaluation = number_evaluation + 1
+
+        k = k + 1
+    
+    return x,number_solve_equation,number_evaluation
+
+        
+solve_list_Newton = np.zeros(190)
+evaluate_list_Newton = np.zeros(190)
+
+solve_list_TR = np.zeros(190)
+evaluate_list_TR = np.zeros(190)
+
+x_list = np.arange(10,200)
+
+eps = 10**(-3)
+for i in x_list:
+    x = 2*np.ones(i)
+    X,solve_list_Newton[i-10],evaluate_list_Newton[i-10] = hw4_nmhm(x,200,eps)
+    X,solve_list_TR[i-10],evaluate_list_TR[i-10] = hw4_tr_ls(x,200,eps)
+        
+
+plt.plot(x_list,solve_list_Newton,label='Newton')
+plt.plot(x_list,solve_list_TR,label='Trust Region')
+plt.xlabel('size of n')
+plt.ylabel('numbers')
+plt.title('numbers of solved equations')
+plt.legend()
+
+plt.figure()
+
+plt.plot(x_list,evaluate_list_Newton,label='Newton')
+plt.plot(x_list,evaluate_list_TR,label='Trust Region')
+plt.xlabel('size of n')
+plt.ylabel('numbers')
+plt.title('numbers of evaluated function')
+plt.legend()
+
+
+        
+
+
+
+        
+
+
+
